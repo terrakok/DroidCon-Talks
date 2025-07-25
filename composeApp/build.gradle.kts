@@ -64,6 +64,7 @@ kotlin {
             implementation(libs.coil.network.ktor)
             implementation(libs.kotlinx.datetime)
             implementation(libs.materialKolor)
+            implementation(libs.ksoup)
         }
 
         commonTest.dependencies {
