@@ -1,7 +1,5 @@
-import org.jetbrains.compose.ExperimentalComposeLibrary
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.compose.reload.gradle.ComposeHotRun
-import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSetTree
 
 plugins {
     alias(libs.plugins.multiplatform)
@@ -9,14 +7,10 @@ plugins {
     alias(libs.plugins.compose)
     alias(libs.plugins.android.application)
     alias(libs.plugins.hotReload)
-    alias(libs.plugins.ksp)
 }
 
 kotlin {
-    androidTarget {
-        //https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-test.html
-        instrumentedTestVariant.sourceSetTree.set(KotlinSourceSetTree.test)
-    }
+    androidTarget()
 
     jvm()
 
@@ -57,21 +51,11 @@ kotlin {
             implementation(libs.ktor.serialization.json)
             implementation(libs.ktor.client.logging)
             implementation(libs.androidx.lifecycle.viewmodel)
-            implementation(libs.androidx.lifecycle.runtime)
-            implementation(libs.androidx.navigation.compose)
-            implementation(libs.kotlinInject)
             implementation(libs.coil)
+            implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor)
             implementation(libs.kotlinx.datetime)
-            implementation(libs.materialKolor)
             implementation(libs.ksoup)
-        }
-
-        commonTest.dependencies {
-            implementation(kotlin("test"))
-            @OptIn(ExperimentalComposeLibrary::class)
-            implementation(compose.uiTest)
-            implementation(libs.kotlinx.coroutines.test)
         }
 
         androidMain.dependencies {
@@ -114,12 +98,6 @@ android {
     }
 }
 
-//https://developer.android.com/develop/ui/compose/testing#setup
-dependencies {
-    androidTestImplementation(libs.androidx.uitest.junit4)
-    debugImplementation(libs.androidx.uitest.testManifest)
-}
-
 compose.desktop {
     application {
         mainClass = "MainKt"
@@ -145,16 +123,4 @@ compose.desktop {
 
 tasks.withType<ComposeHotRun>().configureEach {
     mainClass = "MainKt"
-}
-
-dependencies {
-    with(libs.kotlinInjectKsp) {
-        add("kspAndroid", this)
-        add("kspJvm", this)
-        add("kspJs", this)
-        add("kspWasmJs", this)
-        add("kspIosX64", this)
-        add("kspIosArm64", this)
-        add("kspIosSimulatorArm64", this)
-    }
 }

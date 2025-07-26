@@ -1,14 +1,18 @@
 package com.github.terrakok.dctalks.service
 
+import co.touchlab.kermit.Logger
 import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Document
 import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.select.Elements
-import io.ktor.client.HttpClient
-import io.ktor.client.request.forms.submitForm
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.parameters
+import io.ktor.client.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.logging.*
+import io.ktor.client.request.forms.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -19,6 +23,9 @@ data class Article(
     val title: String,
     val description: String,
     val url: String?,
+    val avatarUrl: String?,
+    val speakerTitle: String,
+    val speakerDesc: String,
     val tags: List<String>,
     val date: LocalDate,
 )
@@ -34,44 +41,61 @@ data class ArticlePage(
     val pagination: Pagination
 )
 
-class ArticleService {
+internal expect val corsProxy: String
+
+class ArticleService(
+    debug: Boolean = false,
+) {
     private val droidconUrl = "https://www.droidcon.com/wp-admin/admin-ajax.php"
+    private val allDroidcons = "droidcon-americas,droidcon-apac,droidcon-berlin,droidcon-emea,droidcon-lagos,droidcon-london,droidcon-new-york,droidcon_san_francisco,droidcon-turin"
     private val pageSize = 100
 
     private val parser = ArticleParser()
-    private val httpClient = HttpClient()
+    private val httpClient = HttpClient {
+        followRedirects = true
+        install(Logging) {
+            logger = object : io.ktor.client.plugins.logging.Logger {
+                override fun log(message: String) {
+                    Logger.d("HTTP Client") { "\n\t" + message }
+                }
+            }
+            level = if (debug) LogLevel.ALL else LogLevel.NONE
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 30_000
+            connectTimeoutMillis = 30_000
+            socketTimeoutMillis = 30_000
+        }
+    }
 
-    suspend fun getArticles(page: Int): ArticlePage {
-
+    suspend fun getArticles(page: Int): ArticlePage = withContext(Dispatchers.Default) {
         val response: HttpResponse = httpClient.submitForm(
-            url = droidconUrl,
+            url = corsProxy + droidconUrl,
             formParameters = parameters {
                 append("action", "us_ajax_grid")
                 append("ajax_url", droidconUrl)
                 append("infinite_scroll", "0")
-                append("max_num_pages", "500")
+                append("max_num_pages", "5000")
                 append("template_vars", queryParamsJsonString(page, pageSize))
             }
         )
         val html = response.bodyAsText()
-        return parser.parseHtml(html)
+        parser.parseHtml(html)
     }
 
     private fun queryParamsJsonString(
         pageNumber: Int,
         pageSize: Int,
-        tag: String = "droidcon-new-york"
-    ) = """
+        tags: String = allDroidcons
+    ): String = """
         {
           "columns": "4",
           "exclude_items": "none",
           "img_size": "default",
           "ignore_items_size": false,
           "items_layout": "1314",
-          "items_offset": "1",
           "load_animation": "none",
           "overriding_link": "none",
-          "post_id": 4023,
           "query_args": {
             "post_type": [ "post" ],
             "posts_per_page": "$pageSize",
@@ -82,11 +106,11 @@ class ArticleService {
           },
           "type": "grid",
           "us_grid_ajax_index": 1,
-          "us_grid_filter_params": "filter_category=video&filter_post_event_tag=$tag",
+          "us_grid_filter_params": "filter_category=video&filter_post_event_tag=$tags",
           "us_grid_index": $pageNumber,
           "_us_grid_post_type": "post"
         }
-    """.trimIndent()
+    """.trimIndent().replace("\\s+".toRegex(), "")
 }
 
 @OptIn(ExperimentalTime::class)
@@ -99,6 +123,7 @@ private class ArticleParser {
         // Parse articles
         val articleElements: Elements = doc.select("article.w-grid-item")
         val articles = articleElements.map { parseArticle(it) }
+            .filter { it.tags.any { tag -> tag.startsWith("droidcon") } }
 
         // Parse pagination
         val pagination = parsePagination(doc)
@@ -111,6 +136,10 @@ private class ArticleParser {
         val title = titleElement?.text().orEmpty()
         val description = articleElement.selectFirst("div.post_content")?.text().orEmpty()
         val url = articleElement.selectFirst("a.usg_btn_1")?.attr("href")
+
+        val avatarUrl = corsProxy + articleElement.selectFirst("img.attachment-thumbnail")?.attr("src")
+        val speakerTitle = articleElement.selectFirst("div.video_post_speaker_title")?.text().orEmpty()
+        val speakerDesc = articleElement.selectFirst("div.video_post_speaker_desc")?.text().orEmpty()
 
         // Extract tags from class names (starts with "tag-")
         val tags = articleElement.classNames()
@@ -126,6 +155,9 @@ private class ArticleParser {
             title = title,
             description = description,
             url = url,
+            avatarUrl = avatarUrl,
+            speakerTitle = speakerTitle,
+            speakerDesc = speakerDesc,
             tags = tags,
             date = date,
         )
