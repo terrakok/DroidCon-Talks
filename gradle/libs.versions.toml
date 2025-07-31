@@ -1,7 +1,7 @@
 [versions]
 
-kotlin = "2.2.0"
-compose = "1.9.0-beta01"
+kotlin = "2.2.20-Beta2"
+compose = "1.9.0+dev2722"
 agp = "8.10.0"
 androidx-activityCompose = "1.10.1"
 hotReload = "1.0.0-beta04"
